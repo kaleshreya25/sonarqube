@@ -1,8 +1,7 @@
 from vuln_demo import weak_password_hash, divide
-import pytest
 
-def test_hash():
-    assert weak_password_hash("a")  # will work, but still flagged as weak
+def test_hash_generates_output():
+    assert weak_password_hash("a")  # function returns a string
 
-def test_divide():
+def test_divide_ok():
     assert divide(4, 2) == 2
