@@ -1,56 +1,87 @@
-import io
+import os
+import hashlib
 import pickle
 import sqlite3
 import json
-from vuln_demo import (
-    weak_password_hash,
-    divide,
-    insecure_deserialization,
-    eval_injection,
-    sql_injection,
-    overly_broad_except,
-    duplicate_logic,
-    hardcoded_secret,
-)
+import logging
 
-def test_md5_hash():
-    result = weak_password_hash("abc")
-    assert isinstance(result, str)
-    assert len(result) == 32  # md5 hex length
 
-def test_divide_valid():
-    assert divide(10, 2) == 5
+# --------------------------
+# VULNERABILITIES / HOTSPOTS
+# --------------------------
 
-def test_eval_injection():
-    assert eval_injection("2 + 2") == 4
+def weak_password_hash(password: str) -> str:
+    """Weak password hashing algorithm (MD5)."""
+    return hashlib.md5(password.encode()).hexdigest()
 
-def test_insecure_deserialization():
-    data = pickle.dumps({"name": "test"})
-    obj = insecure_deserialization(data)
-    assert obj["name"] == "test"
 
-def test_sql_injection(tmp_path):
-    db_path = tmp_path / "test.db"
+def command_injection(user_input: str) -> None:
+    """Unsafely executes a shell command with user input."""
+    os.system(f"echo {user_input}")  # intentionally unsafe
+
+
+def insecure_deserialization(data: bytes):
+    """Insecure deserialization (pickle)."""
+    return pickle.loads(data)
+
+
+def eval_injection(code_str: str):
+    """Dangerous use of eval()."""
+    return eval(code_str)
+
+
+def sql_injection(db_path: str, username: str):
+    """SQL injection via string concatenation."""
     conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE users (name TEXT)")
-    conn.execute("INSERT INTO users VALUES ('admin')")
-    conn.commit()
+    cur = conn.cursor()
+    query = f"SELECT * FROM users WHERE name = '{username}'"
+    cur.execute(query)
+    rows = cur.fetchall()
     conn.close()
+    return rows
 
-    rows = sql_injection(db_path, "admin")
-    assert len(rows) == 1
 
-def test_overly_broad_except(capsys):
-    overly_broad_except()
-    out, _ = capsys.readouterr()
-    assert "Error ignored" in out
+# --------------------------
+# BUGS
+# --------------------------
 
-def test_duplicate_logic(capsys):
-    duplicate_logic(6)
-    out, _ = capsys.readouterr()
-    assert "High value" in out
+def divide(a: float, b: float) -> float:
+    """Potential division by zero bug."""
+    return a / b
 
-def test_hardcoded_secret(capsys):
-    hardcoded_secret()
-    out, _ = capsys.readouterr()
-    assert "API key" in out
+
+def read_json(path: str):
+    """File not closed (resource leak) and unhandled exceptions."""
+    f = open(path, "r")           # intentionally not using context manager
+    return json.load(f)           # file left open on purpose
+
+
+# --------------------------
+# CODE SMELLS
+# --------------------------
+
+def overly_broad_except() -> None:
+    """Overly broad exception handling."""
+    try:
+        1 / 0
+    except Exception as e:        # too broad on purpose
+        print("Error ignored:", e)
+
+
+def duplicate_logic(x: int) -> None:
+    """Duplicate code pattern."""
+    if x > 5:
+        print("High value")
+    if x > 5:                     # duplicate of the condition above
+        print("High value again")
+
+
+def hardcoded_secret() -> None:
+    """Hardcoded secret (security smell)."""
+    api_key = "12345-SECRET-KEY"
+    print("API key:", api_key)
+
+
+def missing_logging_context() -> None:
+    """Poor logging practice (no context)."""
+    logging.error("An error occurred")
