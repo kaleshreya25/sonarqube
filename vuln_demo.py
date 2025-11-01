@@ -2,67 +2,92 @@ import os
 import hashlib
 import pickle
 import sqlite3
-from flask import Flask, request  # unused import (code smell)
+import json
 
-# --- VULNERABILITIES ---
 
-def run_command(user_input):
-    # Command injection: untrusted input passed to shell
-    os.system("echo " + user_input)
+# ------------------------------
+# VULNERABILITIES
+# ------------------------------
 
-def weak_password_hash(pw):
-    # Weak hash: MD5 is insecure
-    return hashlib.md5(pw.encode()).hexdigest()
+def weak_password_hash(password):
+    """❌ Uses MD5 instead of SHA256 or bcrypt"""
+    return hashlib.md5(password.encode()).hexdigest()
 
-def insecure_deserialize(blob):
-    # Insecure deserialization (executes code in blob)
-    return pickle.loads(blob)
+
+def command_injection(user_input):
+    """❌ Unsafely executes shell command with user input"""
+    os.system(f"echo {user_input}")
+
+
+def insecure_deserialization(data):
+    """❌ Insecure deserialization (can execute arbitrary code)"""
+    return pickle.loads(data)
+
+
+def eval_injection(code):
+    """❌ Dangerous use of eval()"""
+    return eval(code)
+
 
 def sql_injection(db_path, username):
-    # SQL injection via string concatenation
-    con = sqlite3.connect(db_path)
-    cur = con.cursor()
-    query = "SELECT * FROM users WHERE name = '" + username + "'"  # unsafe
+    """❌ SQL injection by concatenating user input"""
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    query = f"SELECT * FROM users WHERE name = '{username}'"
     cur.execute(query)
     rows = cur.fetchall()
-    con.close()
+    conn.close()
     return rows
 
-def eval_user(code_str):
-    # Code execution vulnerability
-    return eval(code_str)
 
-# --- BUGS / CODE SMELLS ---
+# ------------------------------
+# BUGS
+# ------------------------------
 
 def divide(a, b):
-    # Bug risk: division by zero not handled
+    """❌ Division by zero risk"""
     return a / b
 
-def open_file_leak():
-    # Resource leak: file never closed
-    f = open("tmp.txt", "w")
-    f.write("hello")
+
+def read_json_file(path):
+    """❌ Potential unhandled exception if file missing or invalid JSON"""
+    f = open(path, "r")  # ❌ File not closed
+    return json.load(f)
+
+
+# ------------------------------
+# CODE SMELLS
+# ------------------------------
 
 def overly_broad_except():
+    """⚠️ Catches all exceptions (too broad)"""
     try:
-        risky = 1 / 0
+        risky = 10 / 0
     except Exception as e:  # too broad
-        print("swallowed:", e)
+        print("Error ignored:", e)
 
-def duplicate_block():
-    for _ in range(2):
-        print("dup")
-    for _ in range(2):
-        print("dup")  # duplicate
+
+def duplicate_logic(x):
+    """⚠️ Duplicate code smell"""
+    if x > 10:
+        print("High value")
+    if x > 10:  # duplicate condition
+        print("High value again")
+
+
+def hardcoded_secret():
+    """⚠️ Hardcoded credentials"""
+    password = "admin123"  # hardcoded secret
+    print("Using password:", password)
+
 
 if __name__ == "__main__":
-    # simulate usage that will be flagged
-    run_command(request.args.get("q") if False else "hi")  # Flask import unused
-    weak_password_hash("mypassword")
-    insecure_deserialize(pickle.dumps({"a": 1}))  # still flagged as pattern
-    sql_injection(":memory:", "bob' OR '1'='1")
-    eval_user("__import__('os').system('echo pwned')")
-    divide(1, 0)
-    open_file_leak()
+    weak_password_hash("test")
+    command_injection("hello; rm -rf /")  # intentionally unsafe
+    try:
+        divide(5, 0)
+    except:
+        pass
     overly_broad_except()
-    duplicate_block()
+    duplicate_logic(20)
+    hardcoded_secret()
