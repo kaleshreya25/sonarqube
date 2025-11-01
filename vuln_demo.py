@@ -1,80 +1,89 @@
-import json
+# vuln_demo.py  — intentionally insecure/buggy for SonarQube demo
+import os
+import hashlib
 import pickle
 import sqlite3
-from pathlib import Path
-
-from vuln_demo import (
-    weak_password_hash,
-    command_injection,
-    insecure_deserialization,
-    eval_injection,
-    sql_injection,
-    divide,
-    read_json,
-    overly_broad_except,
-    duplicate_logic,
-    hardcoded_secret,
-)
+import json
+import logging
 
 
-def test_md5_hash_len():
-    out = weak_password_hash("abc")
-    assert isinstance(out, str) and len(out) == 32  # md5 hex length
+# --------------------------
+# VULNERABILITIES / HOTSPOTS
+# --------------------------
+
+def weak_password_hash(password: str) -> str:
+    """Weak password hashing algorithm (MD5)."""
+    return hashlib.md5(password.encode()).hexdigest()
 
 
-def test_eval_injection():
-    assert eval_injection("2 + 2") == 4
+def command_injection(user_input: str) -> None:
+    """Unsafely executes a shell command with user input."""
+    # Intentionally unsafe: allows shell injection
+    os.system(f"echo {user_input}")
 
 
-def test_insecure_deserialization_roundtrip():
-    data = pickle.dumps({"k": "v"})
-    obj = insecure_deserialization(data)
-    assert obj["k"] == "v"
+def insecure_deserialization(data: bytes):
+    """Insecure deserialization using pickle (can execute code)."""
+    return pickle.loads(data)
 
 
-def test_sql_injection_select(tmp_path: Path):
-    db = tmp_path / "t.db"
-    conn = sqlite3.connect(db)
-    conn.execute("CREATE TABLE users (name TEXT)")
-    conn.execute("INSERT INTO users VALUES ('admin')")
-    conn.commit()
+def eval_injection(code_str: str):
+    """Dangerous use of eval()."""
+    return eval(code_str)
+
+
+def sql_injection(db_path: str, username: str):
+    """SQL injection via string concatenation."""
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    query = f"SELECT * FROM users WHERE name = '{username}'"  # intentional vuln
+    cur.execute(query)
+    rows = cur.fetchall()
     conn.close()
-
-    rows = sql_injection(db, "admin")
-    assert len(rows) == 1
+    return rows
 
 
-def test_divide_ok():
-    assert divide(10, 2) == 5
+# --------------------------
+# BUGS
+# --------------------------
+
+def divide(a: float, b: float) -> float:
+    """Potential division by zero bug (not handled)."""
+    return a / b
 
 
-def test_read_json(tmp_path: Path):
-    p = tmp_path / "cfg.json"
-    p.write_text(json.dumps({"a": 1}))
-    data = read_json(str(p))
-    assert data["a"] == 1
+def read_json(path: str):
+    """File not closed (resource leak) and unhandled exceptions."""
+    f = open(path, "r")            # intentionally not using context manager
+    return json.load(f)            # file left open on purpose
 
 
-def test_overly_broad_except(capsys):
-    overly_broad_except()
-    out, _ = capsys.readouterr()
-    assert "Error ignored" in out
+# --------------------------
+# CODE SMELLS
+# --------------------------
+
+def overly_broad_except() -> None:
+    """Overly broad exception handling."""
+    try:
+        1 / 0
+    except Exception as e:         # too broad on purpose
+        print("Error ignored:", e)
 
 
-def test_duplicate_logic(capsys):
-    duplicate_logic(9)
-    out, _ = capsys.readouterr()
-    # at least one line printed
-    assert "High value" in out
+def duplicate_logic(x: int) -> None:
+    """Duplicate code pattern."""
+    if x > 5:
+        print("High value")
+    if x > 5:                      # duplicate of the condition above
+        print("High value again")
 
 
-def test_command_injection_smoke():
-    # just ensure it runs; we don't assert the shell output
-    command_injection("hello-world")
-    assert True
+def hardcoded_secret() -> None:
+    """Hardcoded secret (security smell)."""
+    api_key = "12345-SECRET-KEY"
+    print("API key:", api_key)
 
 
-def test_hardcoded_secret_prints(capsys):
-    hardcoded_secret()
-    out, _ = capsys.readouterr()
-    assert "API key" in out
+def missing_logging_context() -> None:
+    """Poor logging practice (no context)."""
+    logging.error("An error occurred")
